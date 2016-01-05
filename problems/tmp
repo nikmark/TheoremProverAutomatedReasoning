@@ -1,0 +1,396 @@
+/* strutture di supporto */
+	ArrayList<Clause> tmp = new ArrayList<Clause>();
+	ArrayList<Clause> result = new ArrayList<Clause>();
+	/* usato per sapere se una clausola viene sussunta */
+	boolean subsume = false;
+	/* usato di supporto per non riconsiderare clausole sussunte */
+	HashSet<Clause> sussunte = new HashSet<Clause>();
+	/* usato di supporto per interridurre to_select */
+	Collection<Clause> new_to_select;
+	Clause given; // la clausola data
+
+	int statistics = 0;
+
+	ArrayList<Clause> new_selected = new ArrayList<Clause>();
+
+	boolean semplificato; // di supporto per la semplificazione clausale
+
+	long inizio = 0; // per misurare
+	long fine = 0; // il tempo
+
+	/* inizio ciclo della clausola data */
+
+	while (!to_select.isEmpty()) {
+	  result.clear();
+	  given = to_select.poll(); // la clausola data
+	  /** aggiungo la clausola data in selected */
+
+	  // System.out.println(given);
+
+	  if (!otter) {
+		/* applico contrazione su selected usando la clausola data */
+		/* semplifico selected la clausola data */
+		tmp.clear();
+		if (given.getPredicates().size() == 1) {
+		  inizio = System.currentTimeMillis(); // misuro il tempo
+		  Iterator iter = selected.iterator();
+		  while (iter.hasNext()) {
+			Clause c = (Clause) iter.next();
+			Clause sempl = clauseSimplification(c, given);
+			if (sempl != null && sempl.getWeight() == 0) {
+			  GeneralInfo.result = false;
+			  return false;
+			} else if (sempl != null) {
+			  tmp.add(sempl);
+			  GeneralInfo.semplifications++; // statistics semplifications
+			  iter.remove(); // rimuovo la clausola da seleceted perch� viene
+							 // semplificata
+			}
+		  }
+		  fine = System.currentTimeMillis();
+		  GeneralInfo.semplificationTime += (fine - inizio);
+		  result.addAll(tmp);
+		}
+		/* sussumo selected la clausola data */
+		tmp.clear();
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		for (Clause c : selected) {
+		  if (!subsume(given, c)) {
+			tmp.add(c);
+		  } else
+			GeneralInfo.subsumptions++;
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.subsumptionTIme += (fine - inizio);
+		selected.clear();
+		selected.addAll(tmp);
+	  }
+
+	  inizio = System.currentTimeMillis(); // misuro il tempo
+	  statistics = result.size();
+	  result.addAll(factorization(given)); // genero i fattori
+	  fine = System.currentTimeMillis();
+	  GeneralInfo.factorTime += (fine - inizio);
+
+	  GeneralInfo.factorizations += (result.size() - statistics); // statistics
+																  // factorizations
+	  // System.out.println("inizio binary resolution");
+	  for (Clause c : selected) { // faccio binary resolution con tutto in
+								  // selected
+		statistics = result.size(); // mi serve per contare il numero di
+									// risoluzioni
+
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		result.addAll(binaryResolution(given, c));
+		fine = System.currentTimeMillis();
+		GeneralInfo.binaryTime += (fine - inizio);
+
+		GeneralInfo.binaryRes += (result.size() - statistics); // statistics
+															   // binary
+															   // resolutions
+		// System.out.println(result+" given: "+given+" c: "+c);
+		/** cerco subito la clausola vuota */
+		for (Clause empy : result) {
+		  if (empy.getWeight() == 0) {
+			GeneralInfo.result = false;
+			// System.out.println(given+" - "+c); //DEBUG
+			return false;
+		  }
+		}
+	  }
+	  selected.add(given);
+	  // applico la tautologia a result
+	  tmp.clear();
+	  inizio = System.currentTimeMillis(); // misuro il tempo
+	  for (Clause c : result) {
+		if (!tautology(c))
+		  tmp.add(c);
+		else
+		  GeneralInfo.tautologies++; // statistics tautologies
+	  }
+	  fine = System.currentTimeMillis();
+	  GeneralInfo.tautologyTime += (fine - inizio);
+	  // resetto le strutture dati
+	  result.clear();
+	  result.addAll(tmp);
+
+	  /** semplificazione clausale all'interno di result */
+	  tmp.clear();
+	  inizio = System.currentTimeMillis(); // misuro il tempo
+	  for (Clause c1 : result) {
+		semplificato = false;
+		for (Clause c2 : result) {
+		  Clause sempl = clauseSimplification(c1, c2);
+		  if (sempl != null && sempl.getWeight() == 0) {
+			return false; // anche la semplificazione clausale pu� trovare la
+		  } // clausola
+			// vuota, se la trova finisci subito
+		  if (sempl != null) {
+			tmp.add(sempl); // non metto nessun break cos� in tmp ho tutte le
+							// semplificazioni
+			semplificato = true; // eventuali doppioni saranno rimossi dalla
+								 // sussunzione
+			GeneralInfo.semplifications++; // statistics semplifications
+		  }
+		}
+		if (!semplificato)
+		  tmp.add(c1); // nessuno ha semplificato c1
+	  }
+	  fine = System.currentTimeMillis();
+	  GeneralInfo.semplificationTime += (fine - inizio);
+	  result.clear();
+	  result.addAll(tmp);
+
+	  /** semplificazione clausale di result con to_select (DA NON FARE IN E) */
+	  if (!otter) {
+		tmp.clear();
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		for (Clause c1 : result) {
+		  semplificato = false;
+		  for (Clause c2 : to_select) {
+			Clause sempl = clauseSimplification(c1, c2);
+			if (sempl != null && sempl.getWeight() == 0) {
+			  GeneralInfo.result = false;
+			  // System.out.println("result:" + c1 + "### selected" + c2);
+			  // //DEBUG
+			  return false; // anche la semplificazione clausale pu� trovare la
+			} // clausola
+			  // vuota, se la trova finisci subito
+			if (sempl != null) {
+			  tmp.add(sempl);
+			  semplificato = true;
+			  GeneralInfo.semplifications++; // statistics semplifications
+			}
+		  }
+		  if (!semplificato)
+			tmp.add(c1); // nessuno ha semplificato c1
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.semplificationTime += (fine - inizio);
+		result.clear();
+		result.addAll(tmp);
+	  }
+
+	  /** semplificazione clausale di result con selected */
+	  tmp.clear();
+	  inizio = System.currentTimeMillis(); // misuro il tempo
+	  for (Clause c1 : result) {
+		semplificato = false;
+		for (Clause c2 : selected) {
+		  Clause sempl = clauseSimplification(c1, c2);
+		  if (sempl != null && sempl.getWeight() == 0) {
+			GeneralInfo.result = false;
+			// System.out.println("result:" + c1 + "### selected" + c2); //DEBUG
+			return false; // anche la semplificazione clausale pu� trovare la
+		  } // clausola
+			// vuota, se la trova finisci subito
+		  if (sempl != null) {
+			tmp.add(sempl);
+			semplificato = true;
+			GeneralInfo.semplifications++; // statistics semplifications
+		  }
+		}
+		if (!semplificato)
+		  tmp.add(c1); // nessuno ha semplificato c1
+	  }
+	  fine = System.currentTimeMillis();
+	  GeneralInfo.semplificationTime += (fine - inizio);
+	  result.clear();
+	  result.addAll(tmp);
+
+	  /** semplificazione clausale di to_select con result (DA NON FARE IN E) */
+	  if (!otter) {
+		new_to_select = new ArrayList<Clause>();
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		while (!to_select.isEmpty()) {
+		  semplificato = false;
+		  Clause c1 = to_select.poll();
+		  for (Clause c2 : result) {
+			Clause sempl = clauseSimplification(c1, c2);
+			if (sempl != null && sempl.getWeight() == 0) {
+			  GeneralInfo.result = false;
+			  // System.out.println("to_select:" + c1 + "### resuklt" + c2);
+			  // //DEBUG
+			  return false; // anche la semplificazione clausale pu� trovare la
+			} // clausola
+			  // vuota, se la trova finisci subito
+			if (sempl != null) {
+			  new_to_select.add(sempl);
+			  semplificato = true;
+			  GeneralInfo.semplifications++; // statistics semplifications
+			}
+		  }
+		  if (!semplificato)
+			new_to_select.add(c1); // nessuno ha semplificato c1
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.semplificationTime += (fine - inizio);
+		to_select.addAll(new_to_select);
+	  }
+
+	  /** semplificazione clausale di selected con result (DA NON FARE IN E)*/
+	  if (!otter) {
+		tmp.clear();
+		new_selected.clear();
+		inizio = System.currentTimeMillis(); // misuro il tempo
+
+		for (Clause c1 : selected) {
+		  semplificato = false;
+		  // System.out.println(iter++);
+		  for (Clause c2 : result) {
+			Clause sempl = clauseSimplification(c1, c2);
+			if (sempl != null && sempl.getWeight() == 0) {
+			  GeneralInfo.result = false;
+			  // System.out.println("selected:" + c1 + "### result" + c2);
+			  // //DEBUG
+			  return false; // anche la semplificazione clausale pu� trovare la
+			} // clausola
+			  // vuota, se la trova finisci subito
+			if (sempl != null) {
+			  tmp.add(sempl);
+			  semplificato = true;
+			  GeneralInfo.semplifications++; // statistics semplifications
+			}
+		  }
+		  if (!semplificato)
+			new_selected.add(c1); // nessuno ha semplificato c1
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.semplificationTime += (fine - inizio);
+		result.addAll(tmp);
+		selected.clear();
+		selected.addAll(new_selected);
+	  }
+	  /*
+	   * Iniziamo l'applicazione delle sussunzioni, per prima applico
+	   * sussunzione interna a result
+	   */
+	  sussunte.clear();
+	  tmp.clear();
+	  inizio = System.currentTimeMillis(); // misuro il tempo
+	  for (Clause c1 : result) {
+		subsume = false;
+		for (Clause c2 : result) {
+		  if (!c1.equals(c2) && !sussunte.contains(c1)
+			  && !sussunte.contains(c2) && subsume(c2, c1)) {
+			subsume = true;
+			sussunte.add(c1);
+			GeneralInfo.subsumptions++; // statistics subsumptions
+			break;
+		  }
+		}
+		// ho provato c1 con tutti i c2, se non ho sussunto c1 allora devo
+		// tenerlo
+		if (!subsume)
+		  tmp.add(c1);
+	  }
+	  // ripristino result
+	  fine = System.currentTimeMillis();
+	  GeneralInfo.subsumptionTIme += (fine - inizio);
+	  result.clear();
+	  result.addAll(tmp);
+
+	  /** adesso vediamo se riesco a interridurre result con to_select (DA NON FARE IN E)*/
+	  if (!otter) {
+		tmp.clear();
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		for (Clause c1 : result) {
+		  subsume = false;
+		  for (Clause c2 : to_select) {
+			if (subsume(c2, c1)) {
+			  subsume = true;
+			  GeneralInfo.subsumptions++; // statistics subsumptions
+			  break;
+			}
+		  }
+		  // ho provato c1 con tutti i c2, se non ho sussunto c1 allora devo
+		  // tenerlo
+		  if (!subsume)
+			tmp.add(c1);
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.subsumptionTIme += (fine - inizio);
+		// ripristino result
+		result.clear();
+		result.addAll(tmp);
+	  }
+	  /** adesso vediamo se riesco a interridurre result con selected */
+	  tmp.clear();
+	  inizio = System.currentTimeMillis(); // misuro il tempo
+	  for (Clause c1 : result) {
+		subsume = false;
+		for (Clause c2 : selected) {
+		  if (subsume(c2, c1)) {
+			subsume = true;
+			GeneralInfo.subsumptions++; // statistics subsumptions
+			break;
+		  }
+		}
+		// ho provato c1 con tutti i c2, se non ho sussunto c1 allora devo
+		// tenerlo
+		if (!subsume)
+		  tmp.add(c1);
+	  }
+	  fine = System.currentTimeMillis();
+	  GeneralInfo.subsumptionTIme += (fine - inizio);
+	  // ripristino result
+	  result.clear();
+	  result.addAll(tmp);
+
+	  if (!otter) {
+		/** Adesso applico la sussione a to_select per mantenerlo interridotto (DA NON FARE IN E) */
+		subsume = false;
+		new_to_select = new ArrayList<Clause>();
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		while (!to_select.isEmpty() && !result.isEmpty()) {
+		  subsume = false;
+		  Clause c1 = to_select.poll();
+		  for (Clause c2 : result) {
+			if (subsume(c2, c1)) {
+			  subsume = true;
+			  GeneralInfo.subsumptions++; // statistics subsumptions
+			  break;
+			}
+		  }
+		  if (!subsume)
+			new_to_select.add(c1); // nessuno sussume c1, quindi per ora serve
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.subsumptionTIme += (fine - inizio);
+		if (!result.isEmpty())
+		  to_select.addAll(new_to_select); // ripristino to_select
+	  }
+	  /** Adesso applico la sussione a selected per mantenerlo interridotto 
+	   *  questa volta provo ad utilizzare gli iterator in modo da modificare direttamente
+	   *  la lista selected. (DA NON FARE IN E)
+	   * */
+	  // System.out.println("inizio sussione di selected");
+	  if (!otter) {
+		Iterator<Clause> it_selected = selected.iterator();
+		subsume = false;
+		inizio = System.currentTimeMillis(); // misuro il tempo
+		while (it_selected.hasNext()) {
+		  Clause c1 = (Clause) it_selected.next();
+		  subsume = false;
+		  for (Clause c2 : result) {
+			if (subsume(c2, c1)) {
+			  subsume = true;
+			  GeneralInfo.subsumptions++; // statistics subsumptions
+			  break;
+			}
+		  }
+		  if (subsume)
+			it_selected.remove();
+		}
+		fine = System.currentTimeMillis();
+		GeneralInfo.subsumptionTIme += (fine - inizio);
+	  }
+
+	  to_select.addAll(result);
+	  // System.out.println(to_select.size() + " - "+selected.size()); //DEBUG
+
+	}
+
+	return true; // to_select � vuoto, non c'� altro da fare
+  }
+

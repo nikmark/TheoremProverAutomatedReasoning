@@ -1,0 +1,204 @@
+%\documentclass[a4paper,11pt]{report}
+\documentclass[a4paper,11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{amsmath,amssymb, enumerate, indentfirst, booktabs, listings, colortbl, tabularx, graphicx, url}
+\usepackage{emp} 
+\usepackage{wrapfig}
+
+% include the web pages examined in the bibliography
+\makeatletter
+\let\@orig@endthebibliography\endthebibliography
+\renewcommand\endthebibliography{
+\xdef\@kept@last@number{\the\c@enumiv}
+\@orig@endthebibliography}
+\newenvironment{thesitography}[1]
+%{\def\bibname{Siti consultati}% Classe book o report
+{\def\refname{Siti consultati}% Classe article
+\thebibliography{#1}%
+\setcounter{enumiv}{\@kept@last@number}%
+}
+	{\@orig@endthebibliography}
+\makeatother
+
+\definecolor{orange}{rgb}{1,0.5,0}
+\lstnewenvironment{java}{\lstset{basicstyle=\ttfamily,
+stepnumber=2, numbersep=5pt, language=java, %frame=shadowbox, 
+keywordstyle=\color{red}\bfseries, commentstyle=\color{blue}, 
+stringstyle=\color{orange}}}{}
+
+\newcolumntype{G}{>{\columncolor[gray]{0.8}}c}
+
+\setlength{\parindent}{3mm}
+\newcommand{\grammarindent}[1][1]{\hspace*{#1\parindent}\ignorespaces} 
+
+
+% set margin
+\usepackage{vmargin}
+\setpapersize{A4}
+\setmarginsrb{25mm}{5mm}{25mm}{8mm}
+             {0mm}{10mm}{0mm}{10mm}
+
+
+\title{\bf{Implementazione di un dimostratore basato sul ciclo della clausola data \`a la Otter e \`a la E.}}
+\author{Nicolò Marchi - VR365684}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduzione}
+In questo progetto per il corso di ragionamento automatico ci siamo occupati di realizzare un dimostratore di teoremi per la risoluzione ordinata basato sul ciclo della clausola data, con sistema di inferenza dato da risoluzione binaria ordinata, fattorizzazione ordinata, eliminazione di tautologie, sussunzione e semplificazione clausale. Il progetto implementa due diversi metodi di ricerca: il metodo \`a la Otter e il metodo \`a la E. Si \`e deciso inoltre di integrare la grammatina fornita dalla libreria standardizzata \emph{TPTP}\cite{TPTP}\cite{TPTPsyntax}, che raccoglie un enorme quantita di problemi già formalizzati in diverse grammatiche, anche se per i nostri scopi ci siamo concentrati solo sulla forma clausale normale, detta CNF (\emph{Clausal Normal Form}).
+Infatti questo dimostratore prende in ingresso un insieme di clausole scritte in Forma Normale Congiunta\footnote{\emph{CNF}, Conjunctive Normal Form} e definite da una sintassi standard compatibile con frammento CNF senza uguaglianza della libreria \emph{TPTP} (vedi \cite{TPTP}). Si è quindi implementata una procedura di semi-decisione che, basata su un sistema di cinque regole di inferenza con ordinamenti (di cui due di espansione e tre di contrazione), implementa un piano di ricerca denominato \emph{Ciclo della Clausola Data} (Given clause loop) che è uno standard alla base di molti dimostratori di insieme di formule in logica al primo ordine come Otter, E, Vampire etc. L'ordinamento scelto per il dimostratore è l'ordinamento di Knuth-Bendix  ordinamento di semplificazione che gode delle proprietà di monotonia, stabilità e proprietà del sotto-termine. Si è scelto di utilizzare il linguaggio di programmazione Java, vista la già affermata conoscenza individuale sul linguaggio, e viste le strutture dati utili già fornite nell'implementazione base.
+
+\section{Scelte progettuali ed implementative}
+Come già detto, l'elaborato è stato implementato utilizzando il linguaggio \emph{Java} in quanto il livello di astrazione è tale da permettere al programmatore di concentrarsi principalmente sulla progettazione dell'algoritmo ed, in particolare, su quali strutture dati sia meglio utilizzare. Il progetto è diviso in 3 package principali, che sono:
+\begin{itemize}
+\item \texttt{data\_structures};
+\item \texttt{main\_package};
+\item \texttt{it.nikmark.parser};
+\end{itemize} 
+\subsection{it.nikmark.parser}
+Per leggere le formule nel formato di TPTP, è stato creto un it.nikmark.parser in grado di leggere i file con estensione ``\emph{.p}''. Per la generazione del it.nikmark.parser ci si è affidati a \emph{JavaCC}\cite{JavaCC}, uno strumento che permette di scrivere file che hanno estensione \texttt{.jj}, che definiscono una grammatica context-free BNF (\emph{Backus–Naur Form}) di tipo \emph{LL(1)}. JavaCC genererà poi tutti i file \emph{.java} da compilare per generare il it.nikmark.parser. La peculiarità di JavaCC è quella di generare contemporaneamente analizzatore lessicale e sintattico partendo semplicemente dal file che definisce la grammatica. Come da specifica del progetto, è stata implementata la sola porzione di sintassi che definisce le formule in forma normale congiunta tralasciando gli altri casi.
+L’implementazione è contenuta nel file {\tt tptpgrammar.jj} (package {\tt it.nikmark.parser}) nel quale è stato inframmezzato il codice necessario per la costruzione degli oggetti e strutture dati su cui operare.
+
+\subsection{data\_structures}
+Tutte le classi bean\footnote{così si denotano le classi che logicamente contengono le informazioni da manipolare} sono contenute nel package {\tt data\_structures}. \emph{Java} ha anche permesso un minimo di progettazione orientata agli oggetti, in particolare delle classi che definisco i termini (funzioni, variabili e costanti) e i letterali. 
+Molto rilevante la classe astratta \texttt{Term}, che è superclasse di \texttt{Function}, \texttt{Variable} o \texttt{Constant}, poiché è spesso necessario riferirsi alla classe che le rappresenta tutte (come ad esempio quando si specificano gli argomenti di un letterale). \par
+\subsection{main\_package}
+Le classi contenute nel package \texttt{main\_package} sono tutte le classi che si occupano di risolvere il problema dato in entrata. Le classi principali sono quelle che si riferiscono alle regole, all'ordinamento, all'unificazione e al ciclo della clausola data.
+\subsubsection{ExpansionRules}
+La classe \texttt{ExpansionRules} implementa le due regole di espansione \emph{binaryResolution} e \emph{factorization}. Ognuna delle due regole prende in input rispettivamente una o due clausole. Essendo il sistema di inferenza ordinato, entrambe prima di eseguire ogni operazione estrapoleranno i predicati massimali, in modo da eseguire le operazioni di risoluzione e di fattorizzazione solamente sui predicati massimali. Entrambe le regole restituiranno una \texttt{LinkedList<Clause>} di clausole. Entrambi i metodi sono statici, e richiamabili da ogni classe del progetto senza dover instanziare oggetti.
+\subsubsection{ContractionRules}
+La classe \texttt{ContractionRules} implementa le regole di contrazione \emph{isTautology}, \emph{subsumption} e \emph{clauseSimplification}. Sono state implementate due tipologie di algoritmi di sussunzione, e più precisamente sono stati implementati gli algoritmi presentati nel libro di testo del corso (Chang, Lee)\cite{ChangLee} e la funzione di Stillman presentata in \cite{Gottlob}. L'algoritmo di Stillman è basato principalmente sulla generazione di sostituzioni in successione con backtracking, mentre l'algortimo di Chang-Lee si basa sulla risoluzione. Per le definizioni di complessità si rimanda a \cite{Gottlob}.
+\subsubsection{UnificationRules}
+La classe \texttt{UnificationRules} contiene il metodo \texttt{mostGeneralUnifier}, che, date due liste di argomenti, l'unificatore più generale\footnote{\emph{MGU}, Most General Unifier} tra le due liste. Viene restituita una \texttt{HashMap} formata da coppie \texttt{<Variable, Term>} se l'\emph{MGU} o la sostituzione esiste, altrimenti \texttt{null}. Per quanto riguarda l'\emph{MGU} si è deciso di implementare l'algoritmo presente nel libro \emph{Artificial Intelligence: A Modern Approach} (vedi \cite{AIMAbook} e \cite{AIMAalgo}) che è quadratico nella grandezza delle espressioni che devono essere unificate.
+\subsubsection{KBOComparator}
+In questa classe troviamo tutte le direttive per l'ordinamento di Knuth-Bendix. Più precisamente \texttt{KBOComparator} è una classe che estende \texttt{Comparator}, ed effettua l'ordinamento su predicati. Vengono passati in input due predicati, e ordinati in base a tutte le regole dell'ordinameto. I pesi sono standard, e precisamente sono:
+\begin{itemize}
+\item per letterali, variabili e funzioni: 1;
+\item per costanti: 2;
+\end{itemize}
+Inoltre l'ordinamento di Knuth-Bendix ha bisogno di una precedenza, che viene data dall'ordinamento lessicografico delle stringhe che rappresentano i simboli di predicati e funzioni.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%sono arrivato quiiiiii
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Ciclo della clausola data e Strategia di ricerca}
+Per l'implementazione del ciclo della clausola data ci si è affidati a due strategie di ricerca, dette ciclo à la Otter e ciclo à la E. Per la scelta della clausola data sono state implementate diverse strategie. La prima di esse consiste nel selezionare la prima clausola seguendo un ordinamento a lista FIFO o LIFO. Il criterio di selezione dipende quindi dall’ordine con cui le clausole vengono lette dal dimostratore. Ovviamente questa strategia non è ottimale, perchè volendo noi arrivare alla clausola vuota, sarebbe più conveniente partire a selezionare le clausole di dimensione più piccola.\par
+Per fare questo è stata implementata una piccola modalità di assegnazione di pesi alla clausola, che consiste semplicemente nell'assegnare peso unitrio ad ogni simbolo della clausola. Questo ci permette di utilizzare una \texttt{PriorityQueue} che permette di mantenere tutte le clausole ordinate dalla più piccola alla più grande secondo la dimensione delle stesse. \par
+L'ultimo aspetto rilevante della strategia di ricerca per la scelta della clausola data consiste nell'opzione di poter inserire un valore, chiamato \emph{Peak Given Ratio}, che ogni \texttt{k}\footnote{di solito il \emph{Peak Given Ratio} è compreso tra 4 e 6} iterazioni preleva non la clasuola con peso minore, ma quella che da più tempo è in \texttt{to\_select}. La scelta della clausola data si trasforma quindi in una soluzione mista, visto che la scelta della clausola è data dal metodo \texttt{poll()} della coda che restituisce l'oggetto di dimensione minima, ma ogni \texttt{k} esecuzioni di questo metodo cambia comportamento, restituendo l'oggeto più vecchio all'interno della coda.
+
+\subsection{Ciclo à la Otter}
+Il ciclo à la \emph{Otter}, selezionabile tramite il comando \texttt{-otter}, lavora su due insiemi di clausole, \emph{to\_select} e \emph{selected}. Il ciclo va avanti finchè l'insieme \emph{to\_select} non viene svuotato, o si incontra una refutazione. Il ciclo prevede, dopo la generazione dei fattori e dei risolventi tramite le operazioni di espansione, di mantenere il più possibile ridotto entrambi gli insiemi contenenti le clausole, così da eliminare tutte le clausole inutili e ripetute. Dopo la fase di espansione vi sono tutte le operazioni di contrazione, che vengono effettuate in questo ordine:
+\begin{itemize}
+\item eliminazione di tautologie, semplificazione clausale e sussunzione su risultato dell'espansione con la clausola data;
+\item semplificazione clausale e sussunzione su \emph{to\_select};
+\item semplificazione clausale e sussunzione su \emph{selected};
+\end{itemize}
+Tutto ciò che sopravvive a questa fase viene insierito nell'insieme delle clausole da selezionare, e il ciclo ricomincia.
+\subsection{Ciclo à la E}
+Anche il ciclo à la \emph{E}, selezionabile tramite il comando \texttt{-e}, lavora su due insiemi di clausole, \emph{to\_select} e \emph{selected}. Anche qui si aspetta di svuotare l'insieme \emph{to\_select} per terminare, o quando si incontra una refutazione. La differenza sta nel fatto di essere più conservatore nell’ applicare le regole di contrazione. Tali regole (come la sussunzione) sono abbastanza come costo computazionale e applicarle all’unione dei due insiemi da selezionare e selezionate potrebbe risultare inutilmente dispendioso, questo perchè viene permesso solo agli elementi in
+selezionate di essere ``genitori'' di nuove clausole. Questo però implica di permettere all'insieme \emph{to\_select} di avere clausole ripetute. Le operazioni del ciclo vengono eseguite in ques'ordine:
+\begin{itemize}
+\item semplificazine clausola della clausola data con l'insieme selezionate;
+\item fase di espansione;
+\item eliminazione di tautologie, semplificazione clausale e sussunzione sul risultato dell'espansione; 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% da sistemare
+%%%%%%%%%%%%%%%%%%%%%%%%
+\item
+\end{itemize}
+Anche in questo metodo, al termine della contrazione, le clausole sopravvissute vengono aggiunte all’insieme da selezionare e il ciclo ricomincia selezionando una nuova clausola. Il compromesso
+ottenuto è quello di risparmiare tempo di computazione (vengono fatte meno contrazioni) a discapito dello spazio (l’insieme da selezionare può crescere notevolmente).
+\section{Parametri di esecuzione}
+Questa è una raccolta dei parametri con cui si può settare il dimostratore di teoremi.
+\begin{itemize}
+\item \texttt{-min}, \texttt{-max}, \texttt{-fifo}: permette di scegliere in che tipo di struttura dati costruire l'insieme \emph{to\_select}. Il default è l'opzione della coda di min.
+\item \texttt{-subs=cl} o \texttt{-subs=st}: permette di scegliere che algoritmo di sussunzione utilizzare, e cioè quello offerto da Chang-Lee (opzione \emph{cl}) o quello offerto da Stillman (opzione \emph{st}). Il default è Stillman.
+\item \texttt{-peak=n}: permette di inserire un valore per il \emph{Peak Given Ratio}, inserendo un numero al posto di n. Di default il procedimento del peak given ratio non è attivo.
+\item \texttt{-timeout=n}: permette di inserire un tempo di timeout in secondi per l'esecuzione del dimostratore. Di default il timeout è di 60 secondi.
+\end{itemize}
+
+\section{Benchmark}
+Vediamo ora alcuni benchmark del dimostratore, con alcuni esempi tratti dalla libreria TPTP. Tutte le simulazioni sono state fatte su un notebook Asus N56VZ, con CPU \texttt{Intel i7-3630QM 2.4GHz, TurboCore 3.4GHz}, 8 Gb di RAM, sistema operativo \texttt{Ubuntu 12.10}.
+Uno degli argomenti che possono essere inseriti è \texttt{-timeout} seguito da un numero che indica il limite massimo di secondi entro cui il ciclo della clausola data può cercare una prova di insoddisfacibilità o un modello per la soddisfacibilità. Nel caso questo parametro non sia specificato il tempo di esecuzione viene fissato a 60 secondi. Inoltre se il numero di clausole generate per regole di espansione siano tali da eccedere l'heap space, allora verrà lanciata un eccezione e il programma terminerà brutalmente.\par
+
+\begin{table}[!htp]
+\center
+\begin{tabular}{lGcccc}
+\toprule
+File & Status & Otter contr & Otter exp &  E contr & E exp \\
+\midrule
+ALG002-1 & UNSAT & 445 & 2523 & 4695 & 3174 \\
+ANA002-1 & UNSAT & 12266 & 13106 & 27285 & 62456 \\
+ANA004-5 & UNSAT & 6410 & 6410 & 6828 & 6410 \\
+CAT007-3 & UNSAT & 245 & 260 & 561 & 260 \\
+KRS006-1 & SAT & 61311 & time expired	& time expired	& time expired	\\
+NUM284-1.014 & UNSAT & 3610 & out of memory & 11509	& out of memory	\\ 
+PUZ001-3 & SAT & 148 & 152 & 305 & 160\\
+PUZ012-1 & UNSAT & 234 & 239 & 467 & 250 \\
+PUZ018-1 & UNSAT & time expired & out of memory & time expired & out of memory \\
+SYN086-1.003 & SAT & 757 & 813 & 8393 & 813 \\
+SYN087-1.003 & SAT & 2583 & 2621 & 66101 & 2621 \\
+\bottomrule
+\end{tabular}
+\caption{Numero di clausole generate dalle regole di espansione}
+\end{table}
+
+\begin{table}[!htp]
+\center
+\begin{tabular}{lGcccc}
+\toprule
+File & Risultato & Otter contr (ms) & Otter exp (ms) &  E contr (ms) & E exp (ms) \\
+\midrule
+ALG002-1 & UNSAT & 981 & 2833 & 3537 & 2793 \\
+ANA002-1 & UNSAT & 8735 & 9354 & 16938 & 32813 \\
+ANA004-5 & UNSAT & 42079 & 45167 & 16853 & 14107 \\
+CAT007-3 & UNSAT & 141 & 216 & 278 & 230\\
+KRS006-1 & SAT & 123598 &	time expired & time expired	& time expired	\\
+NUM284-1.014 & UNSAT & 30398 & out of memory & 33460 & out of memory	\\
+PUZ001-3 & SAT & 120 & 146 & 199 & 159\\
+PUZ012-1 & UNSAT & 196 & 325 & 606 & 351 \\
+PUZ018-1 & - & time expired & out of memory & time expired & out of memory \\
+SYN086-1.003 & SAT & 365 & 393 & 1477 & 439 \\
+SYN087-1.003 & SAT & 1392 & 2489 & 7287 & 2594 \\
+\bottomrule
+\end{tabular}
+\caption{Tempistiche a seconda della strategia}
+\end{table}
+\subsection{Considerazioni}
+%Nelle due tabelle è possibile osservare rispettivamente il numero di clausole generate dalle regole di espansione e i tempi di esecuzione a seconda della strategia di ricerca. Nella cartella \texttt{test/} per ogni insieme di clausole testato è presente un altro file con tutte le altre statistiche qui omesse.
+%Dalla prima tabella si può notare come l'implementazione di \emph{E} generi più clausole prima di restituire la risposta corretta: questo perché \emph{E} non mantiene \texttt{toBeSelected} inter-ridotto e quindi se la \emph{given clause} che genera la clausola vuota ha un rating alto verrà prelevata successivamente generando nel frattempo molte altre clausole. Di conseguenza, nonostante in \emph{E} vengano eseguite meno regole di contrazione, i tempi sono leggermente maggiori: molto probabilmente i tempi in \emph{E} si avvicinerebbero maggiormente a quelli di \emph{Otter} se non fossero state implementate le euristiche sulla regola di sussunzione (il vero responsabile del decreasing delle prestazioni) in quanto il vantaggio di non applicare eccessivamente le regole di contrazione sarebbe equiparabile al vantaggio di mantenere entrambi gli insiemi inter-ridotti. A favore di questa tesi è stato riportato l'esempio ANA004-5 nel quale \emph{Otter} impiega più tempo di \emph{E}: ciò accade proprio a causa dell'applicazione delle regole di contrazione tra le clausole generate e \texttt{toBeSelected} in cui evidentemente si esegue in modo massiccio l'algoritmo di sussunzione.\par
+%Per quanto riguarda invece la scelta se prima applicare tutte le regole di espansione e poi contrarre oppure cercare di contrarre ogni clausola appena generata, sembra che quest'ultima strategia sia più efficiente ed, in taluni casi (e.g. KRS006-1), permetta l'uscita dal ciclo che invece deve essere interrotto con risultato \emph{time expired} o \emph{out of memory} in caso si adotti l'altra strategia. A tal proposito emblematico è il problema PUZ018-1 che se eseguito col comando \texttt{-contr} non termina a causa del tempo scaduto mentre con \texttt{-exp} a causa dell'eccessiva memoria allocata.
+
+\begin{thebibliography}{9}
+\bibitem{ChangLee} 	Chang~C.L. Lee~R.C.T. (1973),	
+\newblock "Symbolic Logic and Mechanical Theorem Proving", \emph{Academic Press}.
+\bibitem{AIMAbook} Russell~S. Norvig~P. (2010),
+\newblock "Artificial Intelligence: A Modern Approach (Third Edition)", \emph{Prentice Hall}.
+\bibitem{efficientSubsum} Tammet T. (1998),
+\newblock "Towards Efficient Subsumption", \emph{Lecture Notes in Computer Science. Springer Verlag}.
+\bibitem{Bernd} 	L\"ochned~B. (2006),	
+\newblock "Things to Know When implementing KBO", \emph{Springer Science}.
+\bibitem{Schulz} 	Schulz~S. (1999),	
+\newblock "Simple and Efficient Clause Subsumption with Feature Vector Indexing", \emph{Springer Science}. 
+\bibitem{Gottlob} 	Gottlob~G. Leitsch~A. (1985),	
+\newblock "On the Efficiency of Subsumption Algorithms", \emph{Journal of the ACM}. 
+\end{thebibliography}
+\begin{thesitography}{9}
+\bibitem{TPTP} TPTP, 
+\url{http://www.cs.miami.edu/~tptp/}
+\bibitem{TPTPsyntax} TPTP Syntax, 
+\url{http://www.cs.miami.edu/~tptp/TPTP/SyntaxBNF.html}	
+\bibitem{JavaCC} T. Norvell - JavaCC tutorial, 
+\url{http://www.engr.mun.ca/∼theo/JavaCC-Tutorial/javacc-tutorial.pdf}	
+\bibitem{AIMAalgo} AIMA Algorithms, 
+\url{http://aima.cs.berkeley.edu/algorithms.pdf}
+\end{thesitography}
+
+\end{document}
+

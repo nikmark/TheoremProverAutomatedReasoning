@@ -1,0 +1,50 @@
+// :== used for semantic
+
+<cnf_annotated>      ::= cnf(<name>,<formula_role>,<cnf_formula><annotations>).
+<annotations>        ::= ,<source><optional_info> | <null> // DONT CARE
+<name>               ::= <atomic_word> | <integer> // DONT CARE
+<formula_role>       ::= //DONT CARE
+
+%----CNF formulae (variables implicitly universally quantified)
+<cnf_formula>        ::= (<disjunction>) | <disjunction>
+<disjunction>        ::= <literal> | <disjunction> <vline> <literal>
+<literal>            ::= <atomic_formula> | ~ <atomic_formula>
+
+<atomic_formula>     ::= <plain_atomic_formula> // possono avere davanti uno e due $
+<plain_atomic_formula> ::= <plain_term>
+# <plain_atomic_formula> :== <proposition> | <predicate>(<arguments>)
+# <proposition>        :== <predicate>
+
+<term>               ::= <function_term> | <variable> | <conditional_term> |
+                         <let_term>
+<function_term>      ::= <plain_term> | <defined_term> | <system_term>
+<plain_term>         ::= <constant> | <functor>(<arguments>)
+<constant>           ::= <functor>
+<functor>            ::= <atomic_word>
+<arguments>          ::= <term> | <term>,<arguments>
+
+# <predicate>          :== <atomic_word>
+<atomic_word>        ::= <lower_word>|<single_quoted> 
+<lower_word>         ::- <lower_alpha><alpha_numeric>*
+
+<single_quoted>      ::- <single_quote><sq_char><sq_char>*<single_quote>
+<sq_char>            ::: ([\40-\46\50-\133\135-\176]|[\\]['\\])
+
+<alpha_numeric>      ::: (<lower_alpha>|<upper_alpha>|<numeric>|[_])
+<lower_alpha>        ::: [a-z]
+<upper_alpha>        ::: [A-Z]
+
+<vline>              ::- [|]
+
+
+/* INTEGER (dont care?)*/
+
+<integer>            ::- (<signed_integer>|<unsigned_integer>)
+<signed_integer>     ::- <sign><unsigned_integer>
+<sign>               ::: [+-]
+<unsigned_integer>   ::- <decimal>
+<decimal>            ::- (<zero_numeric>|<positive_decimal>)
+<zero_numeric>       ::: [0]
+<positive_decimal>   ::- <non_zero_numeric><numeric>*
+<non_zero_numeric>   ::: [1-9]
+<numeric>            ::: [0-9]

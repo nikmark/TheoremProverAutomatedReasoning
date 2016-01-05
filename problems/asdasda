@@ -1,0 +1,268 @@
+/**
+ * JavaCC grammar
+ */
+options
+{
+  STATIC = false; 
+}
+
+PARSER_BEGIN(TPTPParser)
+package it.nikmark.parser;
+
+    import data_structures.*;
+    import java.util.*;
+
+    public class TPTPParser{
+        /**
+         * The priority queue of clauses to select from.
+         */
+        private static Collection<Clause> to_select;
+
+        /**
+         * The collection of selected clauses.
+         */
+        private static Collection<Clause> selected;
+        
+        /**
+         * The Map of predicate alreary read of which I don't want different arity.
+         */
+        private static HashMap<String,Predicate > tmpPred = new HashMap<String,Predicate >();
+
+        /**
+         * The Map of predicate alreary read of which I don't want different arity.
+         */
+        private static HashMap<String,Function > tmpFun = new HashMap<String,Function >();
+
+        /**
+         * The Map of constant alreary read of which I don't want repetition.
+         */
+        private static HashMap<String,Constant > tmpConst = new HashMap<String,Constant >();
+
+        /**
+         * The variables read in the current clause.
+         */
+        private static HashMap<String,Variable > clauseVariables = new HashMap<String,Variable >();
+
+         /**
+         * The literals that compone a clause.
+         */
+        private static Set<Predicate > literals = new HashSet<Predicate >();
+
+        /**
+         * The conjecture.
+         */
+         private static boolean conjecture = false;
+         
+              /**
+      * Set of Support
+      */
+      private static boolean directiveSos = false;
+
+        public TPTPParser(String input,Queue<Clause> to_select,Collection<Clause > selected, boolean sos)
+        {
+          tmpPred.clear();
+          tmpFun.clear();
+          tmpConst.clear();
+          clauseVariables.clear();
+          literals.clear();
+          to_select.clear();
+          selected.clear();
+          this.to_select = to_select;
+          this.selected = selected;
+          
+          	  directiveSos=sos;
+          
+          try
+          {
+            new TPTPParser(new java.io.StringReader(input)).TPTP();
+          }catch(Exception e)
+          {
+            //e.printStackTrace();
+            System.out.println("Oops: syntax error, check the formula!"+e.getMessage());
+            System.exit(-1);
+            //e.printStackTrace();
+          }
+        }        
+}
+
+PARSER_END(TPTPParser)
+
+SKIP:  { " " | "\t" | "\n" | "\r" |
+         <"%" (~["\n","\r"])* ("\n" | "\r" | "\r\n")?>  // used to skyp comment, see http://www.cs.utsa.edu/~danlo/teaching/cs4713/lecture/node16.html for more details
+                                                        // and this discussion for <EOF> problem http://www.java-forums.org/advanced-java/44981-single-line-comments-javacc.html
+        }
+ 
+        
+
+<*>TOKEN: {<VLINE:             "|">
+        |   <NOT:               "~">
+ 
+        |   <LOWER_WORD:        ( <LOWER_ALFA> | <DOLLAR_LOWER_ALFA> ) (<ALFA_NUMERIC>)* >
+        |   <UPPER_WORD:        ( <UPPER_ALFA> | <DOLLAR_UPPER_ALFA> ) (<ALFA_NUMERIC>)* >
+
+        |   <SINGLE_QUOTED:     <SINGLE_QUOTE> (<SQ_CHAR>)+ <SINGLE_QUOTE> >    
+
+        |   <#LOWER_ALFA:       ["a"-"z"]>
+        |   <#UPPER_ALFA:       ["A"-"Z"]>
+        |   <#DOLLAR_LOWER_ALFA: <DEF_SYS><LOWER_ALFA> >
+        |   <#DOLLAR_UPPER_ALFA: <DEF_SYS><UPPER_ALFA> >
+        |   <#ALFA_NUMERIC:     <LOWER_ALFA> | <UPPER_ALFA> | <NUMERIC> | <UNDERSCORE> >
+        |   <#DEF_SYS:          "$" | "$$">     // Note: $ and $$ sono da scartare
+        |   <#UNDERSCORE:       "_">
+        |   <#SINGLE_QUOTE:     "'">
+        |   <#SQ_CHAR:          ["\40"-"\46"] |  ["\50"-"\133"] | ["\135"-"\176"]>
+
+        |   <INTEGER:           <SIGNED_INTEGER> | <DECIMAL> >
+        |   <SIGNED_INTEGER:    <SIGN><DECIMAL> >
+        |   <DECIMAL:           <ZERO_NUMERIC> | <NON_ZERO_NUMERIC>(<NUMERIC>)*  >    
+
+        |   <#SIGN:             "+" | "-">
+        |   <#NUMERIC:          ["0"-"9"]>           
+        |   <#ZERO_NUMERIC:     ["0"]>
+        |   <#NON_ZERO_NUMERIC: ["1"-"9"]>
+        }
+
+void TPTP(): {}
+{
+    (CNF_A())* <EOF>
+}
+
+void CNF_A():
+    {
+      Clause f;
+    }
+    {
+    "cnf(" NAME() "," NAME() "," f=CNF()  ( "," NAME() )? ")." 
+    {
+      if( directiveSos )
+      {
+        if ( conjecture ) to_select.add(f);
+        else selected.add(f);
+        conjecture = false;
+     } else to_select.add(f);
+    }
+       
+}
+
+/* I don't need this for the correct behaviour, is just for completness. */
+
+void NAME(): {Token con;} { (con=<LOWER_WORD> | con=<SINGLE_QUOTED> | con=<INTEGER> | con=<UPPER_WORD> | con=<DECIMAL> | con=<SIGNED_INTEGER>)
+{
+  if(con!=null)
+  {
+    String str = con.image;
+    if( directiveSos && (str.equals("negated_conjecture") | str.equals("conjecture")))
+    {
+      conjecture = true;
+      //System.out.println("negazione");
+    }
+  }
+}
+}
+
+
+
+Clause CNF():
+{
+  Predicate l=null;
+  int clause_weight=0;
+  clauseVariables = new HashMap<String,Variable >();
+  literals = new HashSet<Predicate >();
+}
+{
+  "("l=LITERAL() { clause_weight += l.getWeight();literals.add(l); } ( <VLINE> l=LITERAL() { clause_weight += l.getWeight();literals.add(l); } )* ")"
+    {
+      return new Clause(literals,clause_weight);
+    }
+}
+
+
+Predicate LITERAL():
+{
+  Token sign=null;
+  Token p;
+  LinkedList<Term> args=new LinkedList<Term >(); 
+}
+{
+  (sign=<NOT>)? (p=<LOWER_WORD> | p=<SINGLE_QUOTED>)  ( "(" args=ARGUMENTS() ")" )?
+  {
+    int weight=1;
+     //it is a predicate with arguments, check if I've already read it with
+      //a different number of arguments
+      Predicate p2 = tmpPred.get(p.image);
+      
+      if( p2 != null && p2.getArgsCount() != args.size() )
+      {
+       throw new ParseException("The predicate \"" + p.image 
+                        + "\" has been already read with " + p2.getArgsCount() + " argument(s)"); 
+      }
+      
+      for(Term t:args) // retrive the weight of my arguments
+      {
+        weight += t.getWeight();
+      }
+    Predicate newPred = new Predicate(p.image,weight,args, (sign==null) ? false:true);
+    tmpPred.put(p.image,newPred);
+    return newPred;
+  }
+}
+
+LinkedList<Term> ARGUMENTS():
+{
+  LinkedList<Term> args = new LinkedList<Term>();
+  Term t;
+}
+{
+    (t=TERM() {args.add(t);})? ( ","  t=TERM() {args.add(t);} )*
+    {
+      return args;
+    }
+}
+
+Term TERM():
+{
+  Token t;
+  LinkedList<Term > args = null;
+}
+{
+  t = < UPPER_WORD > //upper_word is variables
+  {
+    Variable v = clauseVariables.get(t.toString());
+    if(v == null)
+    {// if is the first time I read this vaariable in this clause, create a new one.
+      v = new Variable(t.image,1);
+      clauseVariables.put(t.toString(),v);
+    }
+    return v;
+  }
+  | (t=<LOWER_WORD> | t=<SINGLE_QUOTED>) ( "(" args=ARGUMENTS() ")" )?
+   // brackets means function, constat otherwise.
+    {
+      if(args == null)
+      { // contant
+        Constant c = tmpConst.get(t.image);
+        if(c == null)
+        { //first time I read this constant
+            c = new Constant(t.image,1);
+            tmpConst.put(t.image,c);
+        }
+        return c;
+      }else{
+        // function        
+        Function f = tmpFun.get(t.image);
+        if (f!=null && f.getArgsCount() != args.size() ){
+          throw new ParseException("The function \"" + t.image 
+                        + "\" has been already read with " + f.getArgsCount() + " argument(s)");
+        }
+        int weight=1;
+        for(Term t1:args) // retrive the weight of my arguments
+        {
+            weight += t1.getWeight();
+        }
+        f = new Function(t.image,weight,args);
+        tmpFun.put(t.image,f);
+        return f;
+          
+      }
+    }
+}
